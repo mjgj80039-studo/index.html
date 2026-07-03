@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>2D 銃撃戦ゲーム</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #222;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #scoreBoard {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        canvas {
+            border: 4px solid #fff;
+            background-color: #111;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="scoreBoard">スコア: <span id="score">0</span> | ライフ: <span id="lives">3</span></div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreEl = document.getElementById("score");
+        const livesEl = document.getElementById("lives");
+
+        // ゲーム状態
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+
+        // プレイヤー設定
+        const player = {
+            x: canvas.width / 2 - 20,
+            y: canvas.height - 60,
+            width: 40,
+            height: 40,
+            speed: 5,
+            color: "#00FF00"
+        };
+
+        // キー入力状態
+        const keys = {};
+
+        // 配列管理
+        let bullets = [];
+        let enemies = [];
+
+        // イベントリスナー
+        window.addEventListener("keydown", (e) => keys[e.key] = true);
+        window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+        // 弾の弾道計算と発射
+        window.addEventListener("keypress", (e) => {
+            if (e.key === " " || e.key === "Spacebar") {
+                if (gameOver) {
+                    resetGame();
+                } else {
+                    bullets.push({
+                        x: player.x + player.width / 2 - 4,
+                        y: player.y,
+                        width: 8,
+                        height: 15,
+                        speed: 7,
+                        color: "#FFFF00"
+                    });
+                }
+            }
+        });
+
+        // 敵の自動生成
+        function spawnEnemy() {
+            if (gameOver) return;
+            const size = 30;
+            const x = Math.random() * (canvas.width - size);
+            enemies.push({
+                x: x,
+                y: -size,
+                width: size,
+                height: size,
+                speed: 2 + Math.random() * 2,
+                color: "#FF0000"
+            });
+            // 次のスポーン時間をランダムに設定
+            setTimeout(spawnEnemy, 1000 + Math.random() * 1000);
+        }
+
+        // 衝突判定の計算
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // ゲームのリセット
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            gameOver = false;
+            bullets = [];
+            enemies = [];
+            player.x = canvas.width / 2 - 20;
+            scoreEl.innerText = score;
+            livesEl.innerText = lives;
+            spawnEnemy();
+            update();
+        }
+
+        // メインループ
+        function update() {
+            if (gameOver) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "white";
+                ctx.font = "48px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+                ctx.font = "24px sans-serif";
+                ctx.fillText("スペースキーを押して再挑戦", canvas.width / 2, canvas.height / 2 + 50);
+                return;
+            }
+
+            // 画面クリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // プレイヤー移動制限
+            if ((keys["ArrowLeft"] || keys["a"]) && player.x > 0) player.x -= player.speed;
+            if ((keys["ArrowRight"] || keys["d"]) && player.x < canvas.width - player.width) player.x += player.speed;
+
+            // プレイヤー描画
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // 弾の移動と描画
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                let b = bullets[i];
+                b.y -= b.speed;
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x, b.y, b.width, b.height);
+
+                // 画面外に出た弾を削除
+                if (b.y < 0) bullets.splice(i, 1);
+            }
+
+            // 敵の移動と描画、衝突判定
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                let e = enemies[i];
+                e.y += e.speed;
+                ctx.fillStyle = e.color;
+                ctx.fillRect(e.x, e.y, e.width, e.height);
+
+                // プレイヤーとの衝突
+                if (checkCollision(player, e)) {
+                    enemies.splice(i, 1);
+                    lives--;
+                    livesEl.innerText = lives;
+                    if (lives <= 0) gameOver = true;
+                    continue;
+                }
+
+                // 弾との衝突
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    let b = bullets[j];
+                    if (checkCollision(b, e)) {
+                        enemies.splice(i, 1);
+                        bullets.splice(j, 1);
+                        score += 10;
+                        scoreEl.innerText = score;
+                        break;
+                    }
+                }
+
+                // 画面最下部に到達した敵の削除
+                if (e.y > canvas.height) {
+                    enemies.splice(i, 1);
+                    lives--;
+                    livesEl.innerText = lives;
+                    if (lives <= 0) gameOver = true;
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // 初回実行
+        spawnEnemy();
